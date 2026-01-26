@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QTextCursor
 from PySide6.QtGui import QAction, QKeySequence, QFont, QTextDocument
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QFileDialog, QMessageBox,
@@ -218,6 +219,7 @@ class MainWindow(QMainWindow):
 
         # Menus
         self._build_actions()
+        self._build_toolbar()
         self.statusBar().showMessage("Prêt")
 
         # Contenu initial
@@ -300,6 +302,266 @@ class MainWindow(QMainWindow):
         m_edit.addAction(act_cut)
         m_edit.addAction(act_copy)
         m_edit.addAction(act_paste)
+
+    def _build_toolbar(self):
+        tb = self.addToolBar("Mise en forme")
+        tb.setMovable(False)
+
+        # Boutons principaux
+        act_bold = QAction("B", self)
+        act_bold.setToolTip("Gras (**...**)  | Ctrl+B")
+        act_bold.setShortcut(QKeySequence.Bold)  # Ctrl+B
+        act_bold.triggered.connect(lambda: self._wrap_selection("**", "**"))
+        self.addAction(act_bold)
+        tb.addAction(act_bold)
+
+        act_italic = QAction("I", self)
+        act_italic.setToolTip("Italique (*...*)  | Ctrl+I")
+        act_italic.setShortcut(QKeySequence.Italic)  # Ctrl+I
+        act_italic.triggered.connect(lambda: self._wrap_selection("*", "*"))
+        self.addAction(act_italic)
+        tb.addAction(act_italic)
+
+        act_underline = QAction("U", self)
+        act_underline.setToolTip("Souligné (<u>...</u>)  | Ctrl+U")
+        act_underline.setShortcut(QKeySequence.Underline)  # Ctrl+U
+        act_underline.triggered.connect(lambda: self._wrap_selection("<u>", "</u>"))
+        self.addAction(act_underline)
+        tb.addAction(act_underline)
+
+        tb.addSeparator()
+
+        act_code = QAction("`code`", self)
+        act_code.setToolTip("Code (`...`) ou bloc ```...```")
+        act_code.triggered.connect(self._toggle_code)
+        tb.addAction(act_code)
+
+        act_h1 = QAction("H1", self)
+        act_h1.setToolTip("Titre (préfixe #)")
+        act_h1.triggered.connect(lambda: self._prefix_lines("# "))
+        tb.addAction(act_h1)
+
+        act_h2 = QAction("H2", self)
+        act_h2.setToolTip("Sous-titre (préfixe ##)")
+        act_h2.triggered.connect(lambda: self._prefix_lines("## "))
+        tb.addAction(act_h2)
+
+        tb.addSeparator()
+
+        act_ul = QAction("•", self)
+        act_ul.setToolTip("Liste à puces (préfixe - )")
+        act_ul.triggered.connect(lambda: self._prefix_lines("- "))
+        tb.addAction(act_ul)
+
+        act_ol = QAction("1.", self)
+        act_ol.setToolTip("Liste numérotée (préfixe 1. )")
+        act_ol.triggered.connect(lambda: self._prefix_lines("1. "))
+        tb.addAction(act_ol)
+
+        tb.addSeparator()
+
+        act_link = QAction("Lien", self)
+        act_link.setToolTip("Lien [texte](url)")
+        act_link.triggered.connect(self._insert_link)
+        tb.addAction(act_link)
+
+        tb.addSeparator()
+
+        act_quote = QAction("❝", self)
+        act_quote.setToolTip("Blockquote (préfixe > )")
+        act_quote.triggered.connect(lambda: self._prefix_lines("> "))
+        tb.addAction(act_quote)
+
+        act_hr = QAction("—", self)
+        act_hr.setToolTip("Ligne horizontale (---)")
+        act_hr.triggered.connect(self._insert_hr)
+        tb.addAction(act_hr)
+
+        act_table = QAction("Table", self)
+        act_table.setToolTip("Insérer un gabarit de table Markdown")
+        act_table.triggered.connect(self._insert_table)
+        tb.addAction(act_table)
+
+        act_img = QAction("Image", self)
+        act_img.setToolTip("Image ![alt](url)")
+        act_img.triggered.connect(self._insert_image)
+        tb.addAction(act_img)
+
+
+    def _active_editor(self) -> QPlainTextEdit:
+        """
+        On applique la mise en forme au Markdown (gauche), jamais au tampon (droite).
+        """
+        return self.editor
+
+    def _wrap_selection(self, left: str, right: str):
+        ed = self._active_editor()
+        cursor = ed.textCursor()
+
+        if cursor.hasSelection():
+            selected = cursor.selectedText()
+            # Qt met parfois des séparateurs Unicode pour les retours ligne en sélection
+            selected = selected.replace("\u2029", "\n")
+            cursor.insertText(f"{left}{selected}{right}")
+        else:
+            # Insère les marqueurs et place le curseur au milieu
+            cursor.insertText(f"{left}{right}")
+            cursor.movePosition(QTextCursor.Left, QTextCursor.MoveAnchor, len(right))
+            ed.setTextCursor(cursor)
+
+        ed.setFocus()
+
+    def _prefix_lines(self, prefix: str):
+        """
+        Préfixe la/les ligne(s) sélectionnée(s) par `prefix`.
+        Si pas de sélection : agit sur la ligne courante.
+        """
+        ed = self._active_editor()
+        cursor = ed.textCursor()
+
+        # Étendre à des lignes entières
+        start = cursor.selectionStart()
+        end = cursor.selectionEnd()
+        cursor.setPosition(start)
+        cursor.movePosition(QTextCursor.StartOfLine)
+        start_line = cursor.position()
+
+        cursor.setPosition(end)
+        cursor.movePosition(QTextCursor.EndOfLine)
+        end_line = cursor.position()
+
+        cursor.setPosition(start_line)
+        cursor.setPosition(end_line, QTextCursor.KeepAnchor)
+
+        block = cursor.selectedText().replace("\u2029", "\n")
+        lines = block.split("\n")
+        lines = [prefix + ln if ln.strip() else ln for ln in lines]
+        cursor.insertText("\n".join(lines))
+        ed.setFocus()
+
+    def _toggle_code(self):
+        """
+        Si sélection sur une seule ligne : `inline code`
+        Si sélection multi-lignes : bloc ``` ```
+        Si pas de sélection : insère `` et place le curseur au milieu.
+        """
+        ed = self._active_editor()
+        cursor = ed.textCursor()
+
+        if not cursor.hasSelection():
+            self._wrap_selection("`", "`")
+            return
+
+        selected = cursor.selectedText().replace("\u2029", "\n")
+        if "\n" in selected:
+            cursor.insertText(f"```\n{selected}\n```")
+        else:
+            cursor.insertText(f"`{selected}`")
+        ed.setFocus()
+
+    def _insert_hr(self):
+        """
+        Insère une ligne horizontale Markdown, sur une ligne isolée.
+        """
+        ed = self._active_editor()
+        cursor = ed.textCursor()
+        cursor.beginEditBlock()
+
+        cursor.movePosition(QTextCursor.EndOfLine)
+        cursor.insertText("\n\n---\n\n")
+
+        cursor.endEditBlock()
+        ed.setTextCursor(cursor)
+        ed.setFocus()
+
+    def _insert_table(self):
+        """
+        Insère un gabarit simple de table Markdown (2 colonnes).
+        Si une sélection existe et contient des lignes -> tente de convertir en table 2 colonnes via séparation par tab.
+        Sinon -> insère un modèle.
+        """
+        ed = self._active_editor()
+        cursor = ed.textCursor()
+
+        if cursor.hasSelection():
+            selected = cursor.selectedText().replace("\u2029", "\n").strip("\n")
+            lines = [ln for ln in selected.split("\n") if ln.strip()]
+            # Tentative: chaque ligne "col1\tcol2"
+            rows = []
+            ok = True
+            for ln in lines:
+                if "\t" not in ln:
+                    ok = False
+                    break
+                a, b = ln.split("\t", 1)
+                rows.append((a.strip(), b.strip()))
+
+            if ok and rows:
+                header = "| Colonne 1 | Colonne 2 |\n|---|---|\n"
+                body = "\n".join([f"| {a} | {b} |" for a, b in rows]) + "\n"
+                cursor.insertText(header + body)
+                ed.setFocus()
+                return
+
+        # Modèle par défaut
+        template = (
+            "\n\n"
+            "| Colonne 1 | Colonne 2 |\n"
+            "|---|---|\n"
+            "| Valeur 1 | Valeur 2 |\n"
+            "| Valeur 3 | Valeur 4 |\n"
+            "\n"
+        )
+        cursor.insertText(template)
+        ed.setTextCursor(cursor)
+        ed.setFocus()
+
+    def _insert_image(self):
+        """
+        Insère une image Markdown.
+        - Si sélection : ![selection](url)
+        - Sinon : ![alt](url) avec curseur sur alt.
+        """
+        ed = self._active_editor()
+        cursor = ed.textCursor()
+
+        if cursor.hasSelection():
+            alt = cursor.selectedText().replace("\u2029", "\n")
+            cursor.insertText(f"![{alt}](https://)")
+            cursor.movePosition(QTextCursor.Left, QTextCursor.MoveAnchor, 1)
+            ed.setTextCursor(cursor)
+        else:
+            cursor.insertText("![alt](https://)")
+            # placer le curseur sur "alt"
+            cursor.movePosition(QTextCursor.Left, QTextCursor.MoveAnchor, len("](https://)"))
+            cursor.movePosition(QTextCursor.Left, QTextCursor.MoveAnchor, len("alt"))
+            ed.setTextCursor(cursor)
+
+        ed.setFocus()
+
+    def _insert_link(self):
+        """
+        Insère un lien Markdown.
+        - Si sélection : [selection](url)
+        - Sinon : [texte](url) avec curseur sur 'texte'
+        """
+        ed = self._active_editor()
+        cursor = ed.textCursor()
+
+        if cursor.hasSelection():
+            text = cursor.selectedText().replace("\u2029", "\n")
+            cursor.insertText(f"[{text}](https://)")
+            # placer le curseur après https:// pour saisir l'URL
+            cursor.movePosition(QTextCursor.Left, QTextCursor.MoveAnchor, 1)
+            ed.setTextCursor(cursor)
+        else:
+            cursor.insertText("[texte](https://)")
+            # placer le curseur sur "texte"
+            cursor.movePosition(QTextCursor.Left, QTextCursor.MoveAnchor, len("](https://)"))
+            cursor.movePosition(QTextCursor.Left, QTextCursor.MoveAnchor, len("texte"))
+            ed.setTextCursor(cursor)
+
+        ed.setFocus()
 
     def toggle_autosave(self, checked: bool):
         self.cfg.enabled = checked
