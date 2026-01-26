@@ -3,6 +3,8 @@
 
 import re
 import sys
+import os
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -177,6 +179,14 @@ class MainWindow(QMainWindow):
         self.current_path: Path | None = None
         self.cfg = AutosaveConfig()
 
+        self.pandoc_path = self._find_pandoc()
+        self.has_pandoc = self.pandoc_path is not None
+
+        # Bibliographie (Pandoc)
+        self.bib_path: Path | None = None
+        self.csl_path: Path | None = None
+        self.citeproc_enabled: bool = False
+
         # Widgets
         self.editor = QPlainTextEdit()
         self.preview = PreviewEdit()
@@ -222,6 +232,12 @@ class MainWindow(QMainWindow):
         self._build_toolbar()
         self.statusBar().showMessage("Prêt")
 
+        # Indicateur Pandoc (widget permanent à droite)
+        from PySide6.QtWidgets import QLabel
+        self.pandoc_label = QLabel()
+        self.statusBar().addPermanentWidget(self.pandoc_label)
+        self._update_pandoc_indicator()
+
         # Contenu initial
         self.editor.setPlainText(
             "# Mini Markdown\n\n"
@@ -233,6 +249,55 @@ class MainWindow(QMainWindow):
             "mais ce que tu y modifies n’est pas réinjecté dans le Markdown.\n"
         )
         self._render_preview_now(force=True)
+
+    def _update_pandoc_indicator(self):
+        if self.has_pandoc:
+            self.pandoc_label.setText("Pandoc installé")
+            self.pandoc_label.setToolTip(self.pandoc_path or "")
+        else:
+            self.pandoc_label.setText("Pandoc non installé")
+            self.pandoc_label.setToolTip("Installe Pandoc ou définis PANDOC_PATH")
+
+    def toggle_citeproc(self, checked: bool):
+        self.citeproc_enabled = checked
+        if checked and not self.bib_path:
+            self.statusBar().showMessage("Citeproc activé, mais aucun .bib sélectionné", 2500)
+        else:
+            self.statusBar().showMessage(
+                "Citations/biblio activées" if checked else "Citations/biblio désactivées",
+                1500
+            )
+
+    def choose_bib(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Choisir un fichier BibTeX", "", "BibTeX (*.bib);;Tous les fichiers (*)"
+        )
+        if not path:
+            return
+        self.bib_path = Path(path)
+        self.statusBar().showMessage(f".bib sélectionné : {self.bib_path.name}", 2000)
+
+        # Option pratique : si on choisit un .bib, on active citeproc
+        self.citeproc_enabled = True
+        if hasattr(self, "act_citeproc"):
+            self.act_citeproc.setChecked(True)
+
+    def clear_bib(self):
+        self.bib_path = None
+        self.statusBar().showMessage(".bib oublié", 1500)
+
+    def choose_csl(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Choisir un fichier CSL (style de citation)", "", "CSL (*.csl);;Tous les fichiers (*)"
+        )
+        if not path:
+            return
+        self.csl_path = Path(path)
+        self.statusBar().showMessage(f".csl sélectionné : {self.csl_path.name}", 2000)
+
+    def clear_csl(self):
+        self.csl_path = None
+        self.statusBar().showMessage(".csl oublié", 1500)
 
     # ---------- UI actions ----------
 
@@ -276,13 +341,79 @@ class MainWindow(QMainWindow):
         act_export_pdf = QAction("Exporter en PDF…", self)
         act_export_pdf.triggered.connect(self.export_pdf)
 
-        act_export_docx = QAction("Exporter en DOCX…", self)
+        act_export_docx = QAction("Exporter en DOCX (simple)…", self)
         act_export_docx.triggered.connect(self.export_docx)
+
+        self.act_export_docx_pandoc = QAction("Exporter en DOCX (Pandoc)…", self)
+        self.act_export_docx_pandoc.setEnabled(self.has_pandoc)
+        self.act_export_docx_pandoc.triggered.connect(self.export_docx_pandoc)
+
+        self.act_export_html_pandoc = QAction("Exporter en HTML (Pandoc)…", self)
+        self.act_export_html_pandoc.setEnabled(self.has_pandoc)
+        self.act_export_html_pandoc.triggered.connect(self.export_html_pandoc)
+
+        self.act_export_pdf_pandoc = QAction("Exporter en PDF (Pandoc)…", self)
+        self.act_export_pdf_pandoc.setEnabled(self.has_pandoc)
+        self.act_export_pdf_pandoc.triggered.connect(self.export_pdf_pandoc)
+
+        self.act_export_tex_pandoc = QAction("Exporter en LaTeX (Pandoc)…", self)
+        self.act_export_tex_pandoc.setEnabled(self.has_pandoc)
+        self.act_export_tex_pandoc.triggered.connect(self.export_tex_pandoc)
+
+        self.act_export_odt_pandoc = QAction("Exporter en ODT (Pandoc)…", self)
+        self.act_export_odt_pandoc.setEnabled(self.has_pandoc)
+        self.act_export_odt_pandoc.triggered.connect(self.export_odt_pandoc)
+
+        self.act_export_epub_pandoc = QAction("Exporter en EPUB (Pandoc)…", self)
+        self.act_export_epub_pandoc.setEnabled(self.has_pandoc)
+        self.act_export_epub_pandoc.triggered.connect(self.export_epub_pandoc)
+
 
         m_export = self.menuBar().addMenu("Export")
         m_export.addAction(act_export_html)
         m_export.addAction(act_export_pdf)
         m_export.addAction(act_export_docx)
+        m_export.addAction(self.act_export_docx_pandoc)
+        m_export.addSeparator()
+        m_export.addAction(self.act_export_html_pandoc)
+        m_export.addAction(self.act_export_pdf_pandoc)
+        m_export.addSeparator()
+        m_export.addAction(self.act_export_tex_pandoc)
+        m_export.addAction(self.act_export_odt_pandoc)
+        m_export.addAction(self.act_export_epub_pandoc)
+
+        # Références (Pandoc)
+        m_refs = self.menuBar().addMenu("Références")
+
+        self.act_citeproc = QAction("Activer citations + bibliographie (Pandoc)", self)
+        self.act_citeproc.setCheckable(True)
+        self.act_citeproc.setChecked(self.citeproc_enabled)
+        self.act_citeproc.setEnabled(self.has_pandoc)
+        self.act_citeproc.triggered.connect(self.toggle_citeproc)
+
+        act_choose_bib = QAction("Choisir un fichier .bib…", self)
+        act_choose_bib.setEnabled(self.has_pandoc)
+        act_choose_bib.triggered.connect(self.choose_bib)
+
+        act_clear_bib = QAction("Oublier le .bib", self)
+        act_clear_bib.setEnabled(self.has_pandoc)
+        act_clear_bib.triggered.connect(self.clear_bib)
+
+        act_choose_csl = QAction("Choisir un style .csl… (optionnel)", self)
+        act_choose_csl.setEnabled(self.has_pandoc)
+        act_choose_csl.triggered.connect(self.choose_csl)
+
+        act_clear_csl = QAction("Oublier le .csl", self)
+        act_clear_csl.setEnabled(self.has_pandoc)
+        act_clear_csl.triggered.connect(self.clear_csl)
+
+        m_refs.addAction(self.act_citeproc)
+        m_refs.addSeparator()
+        m_refs.addAction(act_choose_bib)
+        m_refs.addAction(act_clear_bib)
+        m_refs.addSeparator()
+        m_refs.addAction(act_choose_csl)
+        m_refs.addAction(act_clear_csl)
 
         # Édition (agit sur widget focus : gauche ou droite)
         m_edit = self.menuBar().addMenu("Édition")
@@ -302,6 +433,241 @@ class MainWindow(QMainWindow):
         m_edit.addAction(act_cut)
         m_edit.addAction(act_copy)
         m_edit.addAction(act_paste)
+
+    def _append_pandoc_citeproc_args(self, cmd: list[str]) -> list[str]:
+        """
+        Ajoute --citeproc / --bibliography / --csl si activés et valides.
+        """
+        if self.citeproc_enabled:
+            if self.bib_path and self.bib_path.exists():
+                cmd.append("--citeproc")
+                cmd.append(f"--bibliography={self.bib_path}")
+                if self.csl_path and self.csl_path.exists():
+                    cmd.append(f"--csl={self.csl_path}")
+            else:
+                QMessageBox.warning(
+                    self, "Bibliographie",
+                    "Citeproc est activé, mais aucun fichier .bib valide n’est sélectionné."
+                )
+        return cmd
+
+    def export_html_pandoc(self):
+        if not self.has_pandoc:
+            QMessageBox.information(self, "Pandoc", "Pandoc n’est pas disponible.")
+            return
+
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Exporter en HTML (Pandoc)", "", "HTML (*.html);;Tous les fichiers (*)"
+        )
+        if not path:
+            return
+
+        out = Path(path)
+        if out.suffix.lower() != ".html":
+            out = out.with_suffix(".html")
+
+        md = self.editor.toPlainText()
+
+        try:
+            import subprocess
+
+            cmd = [
+                self.pandoc_path,
+                "--from", "markdown",
+                "--standalone",
+                "--output", str(out),
+            ]
+
+            # Optionnel : choisir un moteur PDF (si installé)
+            # cmd.append("--pdf-engine=xelatex")  # ou lualatex / pdflatex
+
+            cmd = self._append_pandoc_citeproc_args(cmd)
+
+            subprocess.run(cmd, input=md.encode("utf-8"), check=True)
+
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur export HTML (Pandoc)", str(e))
+            return
+
+        self.statusBar().showMessage(f"Export HTML (Pandoc) : {out.name}", 1500)
+
+    def export_pdf_pandoc(self):
+        if not self.has_pandoc:
+            QMessageBox.information(self, "Pandoc", "Pandoc n’est pas disponible.")
+            return
+
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Exporter en PDF (Pandoc)", "", "PDF (*.pdf);;Tous les fichiers (*)"
+        )
+        if not path:
+            return
+
+        out = Path(path)
+        if out.suffix.lower() != ".pdf":
+            out = out.with_suffix(".pdf")
+
+        md = self.editor.toPlainText()
+
+        try:
+            import subprocess
+
+            cmd = [
+                self.pandoc_path,
+                "--from", "markdown",
+                "--to", "pdf",
+                "--standalone",
+                "--output", str(out),
+            ]
+
+            # Optionnel : si tu veux forcer un moteur PDF (à installer sur la machine)
+            # cmd.append("--pdf-engine=xelatex")
+
+            cmd = self._append_pandoc_citeproc_args(cmd)
+
+            subprocess.run(cmd, input=md.encode("utf-8"), check=True)
+
+        except Exception as e:
+            QMessageBox.critical(
+                self, "Erreur export PDF (Pandoc)",
+                str(e) + "\n\n"
+                         "Note : l’export PDF via Pandoc nécessite généralement un moteur LaTeX (TeX Live / MiKTeX)."
+            )
+            return
+
+        self.statusBar().showMessage(f"Export PDF (Pandoc) : {out.name}", 1500)
+
+    def export_with_pandoc(self, to_format: str, dialog_title: str, filter_str: str, default_suffix: str):
+        if not self.has_pandoc:
+            QMessageBox.information(self, "Pandoc", "Pandoc n’est pas disponible.")
+            return
+
+        path, _ = QFileDialog.getSaveFileName(self, dialog_title, "", filter_str)
+        if not path:
+            return
+
+        out = Path(path)
+        if out.suffix.lower() != default_suffix:
+            out = out.with_suffix(default_suffix)
+
+        md = self.editor.toPlainText()
+
+        try:
+            import subprocess
+
+            cmd = [
+                self.pandoc_path,
+                "--from", "markdown",
+                "--to", to_format,
+                "--standalone",
+                "--output", str(out),
+            ]
+
+            # Biblio/citations si activé
+            cmd = self._append_pandoc_citeproc_args(cmd)
+
+            # Styles Word optionnels pour DOCX seulement
+            if to_format == "docx" and self.current_path:
+                ref = self.current_path.parent / "reference.docx"
+                if ref.exists():
+                    cmd.append(f"--reference-doc={ref}")
+
+            subprocess.run(cmd, input=md.encode("utf-8"), check=True)
+
+        except Exception as e:
+            QMessageBox.critical(self, f"Erreur export ({to_format})", str(e))
+            return
+
+        self.statusBar().showMessage(f"Export Pandoc ({to_format}) : {out.name}", 1500)
+
+    def export_tex_pandoc(self):
+        self.export_with_pandoc(
+            to_format="latex",
+            dialog_title="Exporter en LaTeX (Pandoc)",
+            filter_str="LaTeX (*.tex);;Tous les fichiers (*)",
+            default_suffix=".tex",
+        )
+
+    def export_odt_pandoc(self):
+        self.export_with_pandoc(
+            to_format="odt",
+            dialog_title="Exporter en ODT (Pandoc)",
+            filter_str="ODT (*.odt);;Tous les fichiers (*)",
+            default_suffix=".odt",
+        )
+
+    def export_epub_pandoc(self):
+        self.export_with_pandoc(
+            to_format="epub",
+            dialog_title="Exporter en EPUB (Pandoc)",
+            filter_str="EPUB (*.epub);;Tous les fichiers (*)",
+            default_suffix=".epub",
+        )
+
+    def export_docx_pandoc(self):
+        if not self.has_pandoc:
+            QMessageBox.information(
+                self, "Pandoc",
+                "Pandoc n’est pas disponible.\n\n"
+                "Installe Pandoc (ou ajoute-le au PATH), ou définis PANDOC_PATH."
+            )
+            return
+
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Exporter en DOCX (Pandoc)", "", "Word (*.docx);;Tous les fichiers (*)"
+        )
+        if not path:
+            return
+
+        out = Path(path)
+        if out.suffix.lower() != ".docx":
+            out = out.with_suffix(".docx")
+
+        md = self.editor.toPlainText()
+
+        try:
+            import subprocess
+
+            cmd = [
+                self.pandoc_path,
+                "--from", "markdown",
+                "--to", "docx",
+                "--output", str(out),
+                "--standalone",
+            ]
+
+            # Option : styles Word si reference.docx à côté du .md
+            if self.current_path:
+                ref = self.current_path.parent / "reference.docx"
+                if ref.exists():
+                    cmd.append(f"--reference-doc={ref}")
+
+            # Bibliographie / citations (Pandoc)
+            cmd = self._append_pandoc_citeproc_args(cmd)
+
+            subprocess.run(cmd, input=md.encode("utf-8"), check=True)
+
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur export DOCX (Pandoc)", str(e))
+            return
+
+        self.statusBar().showMessage(f"Export DOCX (Pandoc) : {out.name}", 1500)
+
+
+    def _find_pandoc(self) -> str | None:
+        """
+        Détecte pandoc :
+        - variable d’environnement PANDOC_PATH
+        - PATH
+        """
+        env = os.environ.get("PANDOC_PATH")
+        if env and Path(env).exists():
+            return env
+
+        which = shutil.which("pandoc")
+        if which:
+            return which
+
+        return None
 
     def _build_toolbar(self):
         tb = self.addToolBar("Mise en forme")
