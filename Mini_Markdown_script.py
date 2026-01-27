@@ -182,6 +182,9 @@ class MainWindow(QMainWindow):
         self.pandoc_path = self._find_pandoc()
         self.has_pandoc = self.pandoc_path is not None
 
+        # Aperçu via Pandoc (HTML)
+        self.pandoc_preview_enabled: bool = False
+
         # Bibliographie (Pandoc)
         self.bib_path: Path | None = None
         self.csl_path: Path | None = None
@@ -415,6 +418,18 @@ class MainWindow(QMainWindow):
         m_refs.addAction(act_choose_csl)
         m_refs.addAction(act_clear_csl)
 
+        # Affichage
+        m_view = self.menuBar().addMenu("Affichage")
+
+        self.act_pandoc_preview = QAction("Aperçu Pandoc (meilleur rendu : notes, biblio…)", self)
+        self.act_pandoc_preview.setCheckable(True)
+        self.act_pandoc_preview.setChecked(self.pandoc_preview_enabled)
+        self.act_pandoc_preview.setEnabled(self.has_pandoc)
+        self.act_pandoc_preview.triggered.connect(self.toggle_pandoc_preview)
+
+        m_view.addAction(self.act_pandoc_preview)
+
+
         # Édition (agit sur widget focus : gauche ou droite)
         m_edit = self.menuBar().addMenu("Édition")
 
@@ -434,21 +449,29 @@ class MainWindow(QMainWindow):
         m_edit.addAction(act_copy)
         m_edit.addAction(act_paste)
 
-    def _append_pandoc_citeproc_args(self, cmd: list[str]) -> list[str]:
+    def _append_pandoc_citeproc_args(self, cmd: list[str], warn: bool = True) -> list[str]:
         """
         Ajoute --citeproc / --bibliography / --csl si activés et valides.
+        warn=False évite de spammer des popups (utile pour l’aperçu).
         """
-        if self.citeproc_enabled:
-            if self.bib_path and self.bib_path.exists():
-                cmd.append("--citeproc")
-                cmd.append(f"--bibliography={self.bib_path}")
-                if self.csl_path and self.csl_path.exists():
-                    cmd.append(f"--csl={self.csl_path}")
-            else:
+        if not self.citeproc_enabled:
+            return cmd
+
+        if self.bib_path and self.bib_path.exists():
+            cmd.append("--citeproc")
+            cmd.append(f"--bibliography={self.bib_path}")
+            if self.csl_path and self.csl_path.exists():
+                cmd.append(f"--csl={self.csl_path}")
+        else:
+            # Pas de .bib : soit warning ponctuel, soit message discret
+            if warn:
                 QMessageBox.warning(
                     self, "Bibliographie",
                     "Citeproc est activé, mais aucun fichier .bib valide n’est sélectionné."
                 )
+            else:
+                self.statusBar().showMessage("Citeproc activé mais .bib manquant (aperçu sans biblio).", 2000)
+
         return cmd
 
     def export_html_pandoc(self):
@@ -753,6 +776,12 @@ class MainWindow(QMainWindow):
         act_img.triggered.connect(self._insert_image)
         tb.addAction(act_img)
 
+        tb.addSeparator()
+
+        act_note = QAction("Note", self)
+        act_note.setToolTip("Note de bas de page Pandoc : ^[...]\n(Préférer l’aperçu Pandoc pour le rendu)")
+        act_note.triggered.connect(self._insert_footnote)
+        tb.addAction(act_note)
 
     def _active_editor(self) -> QPlainTextEdit:
         """
@@ -929,6 +958,26 @@ class MainWindow(QMainWindow):
 
         ed.setFocus()
 
+    def _insert_footnote(self):
+        """
+        Insère une note inline Pandoc : ^[...]
+        - Si sélection : transforme en ^[sélection]
+        - Sinon : insère ^[] et place le curseur entre les crochets.
+        """
+        ed = self._active_editor()
+        cursor = ed.textCursor()
+
+        if cursor.hasSelection():
+            selected = cursor.selectedText().replace("\u2029", "\n")
+            cursor.insertText(f"^[{selected}]")
+        else:
+            cursor.insertText("^[...]")
+            # placer le curseur sur les points
+            cursor.movePosition(QTextCursor.Left, QTextCursor.MoveAnchor, 3)
+            ed.setTextCursor(cursor)
+
+        ed.setFocus()
+
     def toggle_autosave(self, checked: bool):
         self.cfg.enabled = checked
         if not checked:
@@ -979,15 +1028,71 @@ class MainWindow(QMainWindow):
         if self.cfg.enabled:
             self._autosave_timer.start(self.cfg.idle_ms)
 
+    def toggle_pandoc_preview(self, checked: bool):
+        self.pandoc_preview_enabled = checked
+        if checked and not self.has_pandoc:
+            self.pandoc_preview_enabled = False
+            if hasattr(self, "act_pandoc_preview"):
+                self.act_pandoc_preview.setChecked(False)
+            QMessageBox.information(self, "Pandoc", "Pandoc n’est pas disponible.")
+            return
+
+        self.statusBar().showMessage(
+            "Aperçu Pandoc activé" if checked else "Aperçu Pandoc désactivé",
+            1500
+        )
+        self._render_preview_now(force=True)
+
+    def _pandoc_markdown_to_html(self, md: str) -> str:
+        """
+        Transforme Markdown -> HTML via Pandoc (pour l’aperçu).
+        Renvoie une chaîne HTML (peut lever exception si pandoc échoue).
+        """
+        import subprocess
+
+        cmd = [
+            self.pandoc_path,
+            "--from", "markdown",
+            "--to", "html",
+            "--standalone",
+        ]
+
+        # Important : pas de popups à chaque frappe
+        cmd = self._append_pandoc_citeproc_args(cmd, warn=False)
+
+        proc = subprocess.run(
+            cmd,
+            input=md.encode("utf-8"),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False
+        )
+        if proc.returncode != 0:
+            err = proc.stderr.decode("utf-8", errors="replace")
+            raise RuntimeError(err)
+
+        return proc.stdout.decode("utf-8", errors="replace")
+
     def _render_preview_now(self, force: bool = False):
         if self._suspend_render and not force:
             self._pending_render = True
             return
+
         md = self.editor.toPlainText()
-        # On met à jour la preview (écrase le “tampon” si focus à gauche)
+
         self.preview.blockSignals(True)
-        self.preview.setMarkdown(md)
-        self.preview.blockSignals(False)
+        try:
+            if self.has_pandoc and self.pandoc_preview_enabled:
+                html = self._pandoc_markdown_to_html(md)
+                self.preview.setHtml(html)
+            else:
+                self.preview.setMarkdown(md)
+        except Exception as e:
+            # Fallback robuste : on ne bloque pas l’appli si pandoc a un souci
+            self.preview.setMarkdown(md)
+            self.statusBar().showMessage(f"Aperçu Pandoc indisponible : {e}", 2500)
+        finally:
+            self.preview.blockSignals(False)
 
     # ---------- File ops ----------
 
