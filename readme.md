@@ -1,6 +1,6 @@
-# Mini Markdown — éditeur split + aperçu + autosave + exports
+# Mini Markdown
 
-Petit éditeur Markdown minimaliste, pensé pour l’écriture “sans friction” :
+Petit éditeur Markdown minimaliste
 
 - **fenêtre gauche** : source Markdown
 - **fenêtre droite** : aperçu rendu (éditable comme “tampon” pour couper/copier/coller)
@@ -19,8 +19,8 @@ Petit éditeur Markdown minimaliste, pensé pour l’écriture “sans friction�
 - Split view redimensionnable.
 - Aperçu à droite **éditable** (pratique pour copier/coller depuis du rendu), sans casser l’édition Markdown à gauche.
 
-> Note : ce que tu modifies à droite **n’est pas réinjecté** automatiquement dans le Markdown (droite = tampon).  
-> Pour éviter d’écraser tes collages, la mise à jour de l’aperçu est **suspendue tant que le focus est à droite**, puis se rafraîchit quand tu reviens à gauche.
+> Note : ce qui est modifié à droite **n’est pas réinjecté** automatiquement dans le Markdown.  
+> Pour éviter d’écraser les collages, la mise à jour de l’aperçu est **suspendue tant que le focus est à droite**, puis se rafraîchit quand le focus revient à gauche.
 
 ### Autosave
 - Sauvegarde automatique **après X ms sans frappe** (par défaut ~1 seconde).
@@ -31,7 +31,9 @@ Petit éditeur Markdown minimaliste, pensé pour l’écriture “sans friction�
 - **HTML** : export du document rendu.
 - **PDF** : export “imprimé” via Qt (pas de dépendance supplémentaire).
 - **DOCX** : export recommandé via **Pandoc** (meilleure fidélité : listes, tableaux, notes, etc.).
-
+- **TEX** : export via **Pandoc**
+- **ODT** : export via **Pandoc**
+- **EPUB** : export via **Pandoc**
 ---
 
 ## Prérequis
