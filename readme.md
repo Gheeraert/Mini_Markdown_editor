@@ -74,6 +74,48 @@ python Mini_Wysiwyg_Markdown.py
 
 ---
 
+## 3. `mini_wysiwyg_web/app.py` — Editeur WYSIWYG en version web locale
+
+Interface en deux panneaux servie par Flask sur **http://127.0.0.1:5000** :
+
+| Gauche                    | Droite                             |
+|---------------------------|------------------------------------|
+| Editeur WYSIWYG (TinyMCE) | Pandoc Markdown genere en temps reel |
+
+Meme philosophie que `Mini_Wysiwyg_Markdown.py`, dans le navigateur.
+
+### Fonctionnalites
+
+- Mise en forme : gras, italique, souligne, barre, petites capitales
+- Titres H1 a H6, listes, citations, liens, tableaux simples
+- Notes inline Pandoc (`^[...]`) et listes de definition
+- Metadonnees YAML : title, subtitle, author, date, lang, abstract
+- Sauvegarde HTML dans `documents/`, export `.md` et `.html` depuis le navigateur
+- Autosave automatique (`documents/autosave.html` + `documents/autosave.md`)
+- Synchronisation optionnelle avec un dossier cloud local (OneDrive, Dropbox, etc.)
+- Cle TinyMCE Cloud configurable depuis l'interface (stockee dans `instance/settings.json`)
+
+### Lancer
+
+```bash
+cd mini_wysiwyg_web
+pip install flask
+python app.py
+# puis ouvrir http://127.0.0.1:5000
+```
+
+### Dependances
+
+| Paquet | Obligatoire | Role |
+|--------|-------------|------|
+| flask  | oui         | Serveur web local |
+| pandoc | non         | Conversion HTML → Markdown (meilleur resultat) |
+
+Sans Pandoc, un convertisseur de secours interne prend le relais (resultat approximatif).
+Telecharger Pandoc : [pandoc.org/installing.html](https://pandoc.org/installing.html)
+
+---
+
 ## Logique commune aux deux programmes
 
 Les deux editeurs partagent la meme philosophie de panneau droit :
@@ -85,8 +127,9 @@ Les deux editeurs partagent la meme philosophie de panneau droit :
 
 La difference est la direction :
 
-- `main.py` : Markdown -> rendu HTML (apercu visuel)
-- `Mini_Wysiwyg_Markdown.py` : WYSIWYG -> Markdown Pandoc (apercu technique)
+- `main.py` : Markdown → rendu HTML (apercu visuel)
+- `Mini_Wysiwyg_Markdown.py` : WYSIWYG → Markdown Pandoc (apercu technique)
+- `mini_wysiwyg_web/app.py` : meme logique que `Mini_Wysiwyg_Markdown.py`, dans le navigateur
 
 ---
 
@@ -107,6 +150,14 @@ La difference est la direction :
   (syntaxe Pandoc directe, affichee en gris italique dans le WYSIWYG).
 - Les listes de definition utilisent la syntaxe Pandoc directe dans le document
   (`:   definition` affiche avec indentation).
+
+### `mini_wysiwyg_web/app.py`
+
+- Application locale uniquement — ne pas exposer sur un reseau public.
+- Necessite une connexion Internet pour charger TinyMCE depuis le CDN
+  (sauf hebergement local de TinyMCE).
+- Pas de bibliographie, pas de citeproc, pas de gestion de references.
+- Pas de tableaux complexes (pas de fusion de cellules).
 
 ### `main.py`
 
