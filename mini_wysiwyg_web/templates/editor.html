@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mini WYSIWYG Markdown</title>
+
+  <!--
+    TinyMCE Community Edition via CDN.
+    Pour supprimer la notification "domaine non enregistre", obtenez
+    une cle gratuite sur https://www.tiny.cloud/ et remplacez
+    "no-api-key" ci-dessous par votre cle.
+    L'editeur fonctionne meme sans cle sur localhost.
+  -->
+  <script
+    src="https://cdn.tiny.cloud/1/{{ tinymce_api_key }}/tinymce/8/tinymce.min.js"
+    referrerpolicy="origin"
+    crossorigin="anonymous"></script>
+
+  <link rel="stylesheet" href="/static/editor.css">
+</head>
+
+<body>
+<div id="app-layout">
+
+  <!-- ── Barre d'outils ─────────────────────────────────────────────────── -->
+  <div id="app-toolbar">
+    <span class="app-title">Mini WYSIWYG Markdown</span>
+
+    <div class="toolbar-sep"></div>
+
+    <div class="toolbar-group">
+      <button class="toolbar-btn primary" onclick="saveHtml()"
+              title="Sauvegarder le document de travail en HTML dans documents/">
+        Sauvegarder HTML
+      </button>
+    </div>
+
+    <div class="toolbar-sep"></div>
+
+    <div class="toolbar-group">
+      <button class="toolbar-btn" onclick="exportMarkdown()"
+              title="Telecharger le Pandoc Markdown genere">
+        Export .md
+      </button>
+      <button class="toolbar-btn" onclick="exportHtml()"
+              title="Telecharger le HTML brut">
+        Export HTML
+      </button>
+      <button class="toolbar-btn" onclick="exportPdf()"
+              title="Imprimer / exporter en PDF via le navigateur">
+        PDF
+      </button>
+    </div>
+
+    <div class="toolbar-sep"></div>
+
+    <button class="toolbar-btn" onclick="openMetadata()"
+            title="Editer les metadonnees du document (YAML)">
+      Metadonnees
+    </button>
+
+    <div style="flex:1"></div>
+
+    <button id="cloudFolderBtn" class="toolbar-btn"
+            title="Configurer le dossier de sauvegarde cloud local">
+      Dossier cloud&hellip;
+    </button>
+
+    {% if cloud_folder_configured %}
+      <span id="cloud-badge" class="pandoc-badge ok"
+            title="Les autosaves sont copiees dans le dossier cloud local configure">
+        Cloud local : configure
+      </span>
+    {% else %}
+      <span id="cloud-badge" class="pandoc-badge absent"
+            title="Aucun dossier cloud local — cliquez sur 'Dossier cloud…' pour en indiquer un">
+        Cloud local : non configure
+      </span>
+    {% endif %}
+
+    <div class="toolbar-sep"></div>
+
+    <button id="tinymceKeyBtn" class="toolbar-btn"
+            title="Configurer la cle API TinyMCE Cloud">
+      Cle TinyMCE Cloud&hellip;
+    </button>
+
+    {% if tinymce_key_configured %}
+      <span class="pandoc-badge ok" title="Cle TinyMCE Cloud configuree">TinyMCE : cle configuree</span>
+    {% else %}
+      <span class="pandoc-badge absent" title="Aucune cle TinyMCE — cliquez sur 'Cle TinyMCE Cloud…' pour en saisir une">TinyMCE : aucune cle</span>
+    {% endif %}
+
+    {% if has_pandoc %}
+      <span class="pandoc-badge ok">Pandoc OK</span>
+    {% else %}
+      <span class="pandoc-badge absent"
+            title="Installez Pandoc ou definissez PANDOC_PATH pour une meilleure conversion">
+        Pandoc absent — conversion de secours
+      </span>
+    {% endif %}
+  </div><!-- /#app-toolbar -->
+
+
+  <!-- ── Panneaux split ─────────────────────────────────────────────────── -->
+  <div id="split-container">
+
+    <!-- Panneau gauche : WYSIWYG -->
+    <div class="split-pane" id="left-pane">
+      <div class="pane-header">
+        <span class="pane-label">Editeur WYSIWYG</span>
+        <span style="font-size:10px;font-style:italic;color:#95a5a6">
+          source de verite
+        </span>
+      </div>
+      <div id="editor-wrapper">
+        <!-- TinyMCE remplace cette textarea -->
+        <textarea id="editor"></textarea>
+      </div>
+    </div><!-- /#left-pane -->
+
+    <!-- Separateur redimensionnable -->
+    <div id="split-handle" title="Glisser pour redimensionner"></div>
+
+    <!-- Panneau droit : Markdown Pandoc genere -->
+    <div class="split-pane" id="right-pane">
+      <div class="pane-header">
+        <span class="pane-label">Pandoc Markdown (temps reel)</span>
+        <span class="pane-status" id="pane-right-status" style="display:none">
+          &#9646;&#9646; tampon actif — generation suspendue
+        </span>
+      </div>
+      <textarea id="markdown-view"
+                spellcheck="false"
+                placeholder="Le Pandoc Markdown apparaitra ici en temps reel..."></textarea>
+    </div><!-- /#right-pane -->
+
+  </div><!-- /#split-container -->
+
+
+  <!-- ── Barre d'etat ───────────────────────────────────────────────────── -->
+  <div id="status-bar">
+    <span id="status-msg">Pret</span>
+    <span id="autosave-msg"></span>
+  </div>
+
+</div><!-- /#app-layout -->
+
+
+<!-- Div invisible pour l'impression PDF -->
+<div id="print-content"></div>
+
+
+<!-- ── Modal Metadonnees ─────────────────────────────────────────────────── -->
+<div id="metadata-overlay">
+  <div id="metadata-dialog">
+    <h2>Metadonnees du document</h2>
+
+    <div class="meta-field">
+      <label for="meta-title">Titre</label>
+      <input type="text" id="meta-title" placeholder="Titre du document">
+    </div>
+    <div class="meta-field">
+      <label for="meta-subtitle">Sous-titre</label>
+      <input type="text" id="meta-subtitle" placeholder="Sous-titre eventuel">
+    </div>
+    <div class="meta-field">
+      <label for="meta-author">Auteur</label>
+      <input type="text" id="meta-author" placeholder="Nom de l'auteur">
+    </div>
+    <div class="meta-field">
+      <label for="meta-date">Date</label>
+      <input type="text" id="meta-date" placeholder="2026">
+    </div>
+    <div class="meta-field">
+      <label for="meta-lang">Langue</label>
+      <input type="text" id="meta-lang" placeholder="fr-FR">
+    </div>
+    <div class="meta-field">
+      <label for="meta-abstract">Resume (abstract)</label>
+      <textarea id="meta-abstract" rows="3"
+                placeholder="Bref resume du document..."></textarea>
+    </div>
+
+    <div class="modal-footer">
+      <button class="modal-btn" onclick="closeMetadata()">Annuler</button>
+      <button class="modal-btn ok" onclick="saveMetadata()">OK</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ── Modal Dossier cloud local ──────────────────────────────────────────── -->
+<div id="cloud-folder-overlay">
+  <div id="cloud-folder-dialog">
+    <h2>Dossier de sauvegarde cloud local</h2>
+    <p class="cloud-folder-hint">
+      Indiquez le chemin d'un dossier local d&eacute;j&agrave; synchronis&eacute; par
+      Google&nbsp;Drive&nbsp;Desktop, Dropbox, OneDrive, Nextcloud ou &eacute;quivalent.
+      Laissez vide pour d&eacute;sactiver.<br>
+      Exemple&nbsp;: <code>C:\Users\Tony\Google Drive\MiniWysiwyg</code>
+    </p>
+    <div class="meta-field">
+      <label for="cloud-folder-input">Chemin du dossier</label>
+      <input type="text" id="cloud-folder-input"
+             placeholder="C:\Users\...\Google Drive\MiniWysiwyg"
+             value="{{ cloud_sync_folder }}">
+    </div>
+    <div id="cloud-folder-error"></div>
+    <div class="modal-footer">
+      <button class="modal-btn" onclick="closeCloudFolderDialog()">Annuler</button>
+      <button class="modal-btn ok" onclick="saveCloudFolderDialog()">OK</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- Script principal (charge apres le DOM) -->
+<script src="/static/editor.js"></script>
+
+<script>
+async function configureTinyMCEKey() {
+  const key = window.prompt("Cle TinyMCE Cloud :");
+
+  if (key === null) {
+    return;
+  }
+
+  const response = await fetch("/api/settings/tinymce-key", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({tinymce_api_key: key.trim()})
+  });
+
+  if (!response.ok) {
+    alert("Impossible d'enregistrer la cle TinyMCE.");
+    return;
+  }
+
+  alert("Cle TinyMCE enregistree. La page va etre rechargee.");
+  window.location.reload();
+}
+
+document.getElementById("tinymceKeyBtn")
+  .addEventListener("click", configureTinyMCEKey);
+
+// ── Dossier cloud local ──────────────────────────────────────────────────────
+
+function openCloudFolderDialog() {
+  document.getElementById("cloud-folder-error").textContent = "";
+  document.getElementById("cloud-folder-overlay").classList.add("open");
+  document.getElementById("cloud-folder-input").focus();
+}
+
+function closeCloudFolderDialog() {
+  document.getElementById("cloud-folder-overlay").classList.remove("open");
+}
+
+async function saveCloudFolderDialog() {
+  const folder = document.getElementById("cloud-folder-input").value.trim();
+  const errEl  = document.getElementById("cloud-folder-error");
+  errEl.textContent = "";
+
+  const response = await fetch("/api/settings/cloud-folder", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({cloud_sync_folder: folder})
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || !data.ok) {
+    errEl.textContent = data.error || "Erreur lors de l'enregistrement.";
+    return;
+  }
+
+  // Mettre à jour le badge sans recharger la page
+  const badge = document.getElementById("cloud-badge");
+  if (folder) {
+    badge.textContent = "Cloud local : configure";
+    badge.className = "pandoc-badge ok";
+    badge.title = "Les autosaves sont copiees dans le dossier cloud local configure";
+  } else {
+    badge.textContent = "Cloud local : non configure";
+    badge.className = "pandoc-badge absent";
+    badge.title = "Aucun dossier cloud local — cliquez sur 'Dossier cloud…' pour en indiquer un";
+  }
+
+  closeCloudFolderDialog();
+}
+
+document.getElementById("cloudFolderBtn")
+  .addEventListener("click", openCloudFolderDialog);
+
+document.getElementById("cloud-folder-overlay")
+  .addEventListener("click", function(e) {
+    if (e.target === this) closeCloudFolderDialog();
+  });
+</script>
+
+</body>
+</html>

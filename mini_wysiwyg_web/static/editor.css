@@ -1,0 +1,418 @@
+/* Mini WYSIWYG Web — feuille de style principale */
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14px;
+    background: #fff;
+}
+
+/* ── Mise en page generale ───────────────────────────────────────────────── */
+
+#app-layout {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+/* ── Barre d'outils superieure ───────────────────────────────────────────── */
+
+#app-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 12px;
+    height: 46px;
+    background: #2c3e50;
+    color: #fff;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+
+.app-title {
+    font-weight: 600;
+    font-size: 15px;
+    color: #ecf0f1;
+    margin-right: 8px;
+    white-space: nowrap;
+}
+
+.toolbar-group {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.toolbar-sep {
+    width: 1px;
+    height: 24px;
+    background: rgba(255,255,255,0.2);
+    margin: 0 4px;
+}
+
+.toolbar-btn {
+    padding: 4px 10px;
+    background: rgba(255,255,255,0.12);
+    color: #ecf0f1;
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    white-space: nowrap;
+    transition: background 0.15s;
+}
+
+.toolbar-btn:hover {
+    background: rgba(255,255,255,0.22);
+}
+
+.toolbar-btn.primary {
+    background: #27ae60;
+    border-color: #27ae60;
+}
+
+.toolbar-btn.primary:hover {
+    background: #219a52;
+}
+
+.pandoc-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+}
+
+.pandoc-badge.ok {
+    background: rgba(39, 174, 96, 0.3);
+    color: #a8e6bf;
+    border: 1px solid rgba(39, 174, 96, 0.4);
+}
+
+.pandoc-badge.absent {
+    background: rgba(231, 76, 60, 0.3);
+    color: #f5b7b1;
+    border: 1px solid rgba(231, 76, 60, 0.4);
+}
+
+/* ── Panneaux split ──────────────────────────────────────────────────────── */
+
+#split-container {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
+}
+
+.split-pane {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+    min-width: 200px;
+}
+
+#split-handle {
+    width: 5px;
+    background: #dde1e7;
+    cursor: col-resize;
+    flex-shrink: 0;
+    transition: background 0.15s;
+}
+
+#split-handle:hover,
+#split-handle.dragging {
+    background: #3498db;
+}
+
+.pane-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 10px;
+    background: #f0f2f5;
+    border-bottom: 1px solid #dde1e7;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #7f8c8d;
+    flex-shrink: 0;
+    height: 26px;
+}
+
+.pane-header .pane-label { }
+
+.pane-status {
+    font-size: 11px;
+    color: #e67e22;
+    font-style: italic;
+    font-weight: normal;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+/* ── Editeur WYSIWYG (TinyMCE) ───────────────────────────────────────────── */
+
+#editor-wrapper {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Force TinyMCE a remplir le conteneur */
+#editor-wrapper .tox-tinymce {
+    flex: 1 !important;
+    border: none !important;
+    border-radius: 0 !important;
+}
+
+#editor-wrapper .tox .tox-edit-area__iframe {
+    height: 100% !important;
+}
+
+/* ── Panneau Markdown (droite) ───────────────────────────────────────────── */
+
+#markdown-view {
+    flex: 1;
+    border: none;
+    outline: none;
+    resize: none;
+    padding: 14px 16px;
+    font-family: "Consolas", "Courier New", "Lucida Console", monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    background: #fafbfc;
+    color: #2c3e50;
+    white-space: pre;
+    overflow-wrap: normal;
+    overflow-x: auto;
+    tab-size: 4;
+}
+
+#markdown-view:focus {
+    background: #f5f7fa;
+    box-shadow: inset 2px 0 0 #3498db;
+}
+
+/* ── Barre d'etat inferieure ─────────────────────────────────────────────── */
+
+#status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 26px;
+    padding: 0 12px;
+    background: #f0f2f5;
+    border-top: 1px solid #dde1e7;
+    font-size: 11px;
+    color: #7f8c8d;
+    flex-shrink: 0;
+}
+
+#status-msg { }
+
+#autosave-msg {
+    font-style: italic;
+    color: #95a5a6;
+}
+
+/* ── Modal Metadonnees ───────────────────────────────────────────────────── */
+
+#metadata-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 9000;
+    align-items: center;
+    justify-content: center;
+}
+
+#metadata-overlay.open {
+    display: flex;
+}
+
+#metadata-dialog {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+    width: 480px;
+    max-width: 95vw;
+    padding: 24px;
+}
+
+#metadata-dialog h2 {
+    margin: 0 0 20px;
+    font-size: 17px;
+    color: #2c3e50;
+    font-weight: 600;
+}
+
+.meta-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 14px;
+}
+
+.meta-field label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #5d6d7e;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.meta-field input,
+.meta-field textarea {
+    padding: 7px 10px;
+    border: 1px solid #ccd1d9;
+    border-radius: 5px;
+    font-size: 13px;
+    font-family: inherit;
+    transition: border-color 0.15s;
+    background: #fafbfc;
+}
+
+.meta-field input:focus,
+.meta-field textarea:focus {
+    outline: none;
+    border-color: #3498db;
+    background: #fff;
+}
+
+.meta-field textarea {
+    resize: vertical;
+    min-height: 70px;
+    font-family: inherit;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 20px;
+}
+
+.modal-btn {
+    padding: 7px 18px;
+    border-radius: 5px;
+    font-size: 13px;
+    cursor: pointer;
+    border: 1px solid #ccd1d9;
+    background: #fff;
+    transition: background 0.15s;
+}
+
+.modal-btn:hover {
+    background: #f0f2f5;
+}
+
+.modal-btn.ok {
+    background: #2980b9;
+    color: #fff;
+    border-color: #2980b9;
+}
+
+.modal-btn.ok:hover {
+    background: #2471a3;
+}
+
+/* ── Modal Dossier cloud local ───────────────────────────────────────────── */
+
+#cloud-folder-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 9000;
+    align-items: center;
+    justify-content: center;
+}
+
+#cloud-folder-overlay.open {
+    display: flex;
+}
+
+#cloud-folder-dialog {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+    width: 520px;
+    max-width: 95vw;
+    padding: 24px;
+}
+
+#cloud-folder-dialog h2 {
+    margin: 0 0 12px;
+    font-size: 17px;
+    color: #2c3e50;
+    font-weight: 600;
+}
+
+.cloud-folder-hint {
+    font-size: 12px;
+    color: #7f8c8d;
+    margin: 0 0 16px;
+    line-height: 1.5;
+}
+
+.cloud-folder-hint code {
+    font-family: "Consolas", "Courier New", monospace;
+    background: #f0f2f5;
+    padding: 1px 5px;
+    border-radius: 3px;
+}
+
+#cloud-folder-error {
+    font-size: 12px;
+    color: #e74c3c;
+    min-height: 18px;
+    margin-bottom: 4px;
+}
+
+/* ── Impression (export PDF via navigateur) ──────────────────────────────── */
+
+@media print {
+    #app-toolbar, #status-bar, #split-handle,
+    #right-pane, #metadata-overlay {
+        display: none !important;
+    }
+    #left-pane {
+        flex: 1 !important;
+        width: 100% !important;
+    }
+    .pane-header {
+        display: none !important;
+    }
+    body, html {
+        overflow: visible !important;
+        height: auto !important;
+    }
+    #split-container {
+        overflow: visible !important;
+        height: auto !important;
+    }
+    #editor-wrapper .tox-tinymce {
+        display: none !important;
+    }
+    #print-content {
+        display: block !important;
+    }
+}
+
+#print-content {
+    display: none;
+    padding: 2cm;
+    font-family: Georgia, serif;
+    line-height: 1.6;
+}

@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Environnements virtuels
+.venv/
+venv/
+env/
+.env
+
+# Flask / instance locale (contient la cle API et les chemins personnels)
+instance/
+
+# Documents utilisateur (generes au runtime, non versionnables)
+documents/*
+!documents/.gitkeep
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
