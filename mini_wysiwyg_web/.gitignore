@@ -27,3 +27,6 @@ documents/*
 # OS
 .DS_Store
 Thumbs.db
+
+# Binaires tiers
+pandoc.exe

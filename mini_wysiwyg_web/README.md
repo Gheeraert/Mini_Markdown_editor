@@ -47,7 +47,7 @@ Sans Pandoc, une conversion de secours interne est utilisee (resultat approximat
 
 ### Installer Pandoc
 
-- Telecharger : https://pandoc.org/installing.html
+- Telecharger : [pandoc.org/installing.html](https://pandoc.org/installing.html)
 - Ou pointer vers un pandoc existant avec la variable d'environnement :
 
 ```bash
@@ -154,6 +154,47 @@ C:\Users\Tony\OneDrive\MiniWysiwyg
 
 Le chemin est enregistre dans `instance/settings.json`.
 A chaque autosave, `autosave.html` et `autosave.md` sont copies dans ce dossier.
+
+---
+
+## Interface web — `app.py`
+
+`app.py` est le serveur Flask qui sert l'interface et expose une API REST locale.
+Il ecoute sur **http://127.0.0.1:5000** (localhost uniquement, `MAX_CONTENT_LENGTH` : 8 Mo).
+
+### Detection de Pandoc
+
+Au demarrage, `app.py` cherche Pandoc dans cet ordre :
+
+1. Variable d'environnement `PANDOC_PATH`
+2. `pandoc` accessible dans le `PATH` systeme
+
+Si Pandoc est absent, la conversion utilise le convertisseur de secours integre.
+L'interface affiche un avertissement si Pandoc n'est pas detecte.
+
+### Routes
+
+| Methode | Route | Role |
+|---------|-------|------|
+| `GET`  | `/` | Page principale (editeur + panneau Markdown) |
+| `POST` | `/api/to-markdown` | Convertit `{ html, metadata }` → `{ markdown }` via Pandoc ou fallback |
+| `POST` | `/api/autosave` | Sauvegarde `autosave.html` + `autosave.md` dans `documents/` (et dossier cloud si configure) |
+| `POST` | `/api/save` | Sauvegarde un fichier nommé dans `documents/` — `{ format, content, filename }` |
+| `POST` | `/api/settings/tinymce-key` | Enregistre la cle TinyMCE dans `instance/settings.json` |
+| `POST` | `/api/settings/cloud-folder` | Enregistre le chemin du dossier cloud local dans `instance/settings.json` |
+
+### Parametres persistants (`instance/settings.json`)
+
+Les reglages de session sont stockes dans `instance/settings.json` (hors versionnement) :
+
+```json
+{
+  "tinymce_api_key": "votre-cle",
+  "cloud_sync_folder": "C:\\Users\\Tony\\OneDrive\\MiniWysiwyg"
+}
+```
+
+Ils peuvent aussi etre fournis via les variables d'environnement `TINYMCE_API_KEY` et `PANDOC_PATH`.
 
 ---
 
